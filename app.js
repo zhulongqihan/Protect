@@ -324,9 +324,9 @@
       renderSelectionSummary();
     });
     $("#select-visible").addEventListener("click", () => {
-      state.filtered.slice((state.page - 1) * state.pageSize, state.page * state.pageSize).forEach((candidate) => state.selected.add(candidate.id));
+      state.filtered.forEach((candidate) => state.selected.add(candidate.id));
       renderCleanup();
-      showToast("已勾选当前结果。");
+      showToast("已勾选当前筛选结果，共 " + state.filtered.length + " 项。");
     });
     $("#clear-selection").addEventListener("click", () => {
       state.selected.clear();
