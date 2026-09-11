@@ -26,6 +26,7 @@ $policyExclusions = New-Object System.Collections.Generic.List[object]
 function Add-ManifestRecord {
     param([Parameter(Mandatory = $true)]$Record)
 
+    if ($Record.PSObject.Properties['ProtectedReason'] -and $Record.ProtectedReason) { return }
     $category = Get-ProtectCategoryForPath -Path $Record.Path -Bytes $Record.Bytes -LastWriteTime $Record.LastWriteTime
     if ($null -eq $category) { return }
 
@@ -57,6 +58,45 @@ function Add-ManifestRecord {
     }
 }
 
+function Add-ManifestDirectoryRecord {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][long]$Bytes,
+        [Parameter(Mandatory = $true)][int]$FileCount,
+        [Parameter(Mandatory = $true)][string]$LastWriteUtc,
+        [Parameter(Mandatory = $true)][datetime]$LastWriteTime
+    )
+
+    $category = Get-ProtectCategoryForPath -Path $Path -Bytes $Bytes -LastWriteTime $LastWriteTime
+    if ($null -eq $category) { return }
+    $personalReason = Get-ProtectPersonalPathReason -Path $Path
+    if ($personalReason) {
+        $policyExclusions.Add([ordered]@{ reason = $personalReason; bytes = $Bytes }) | Out-Null
+        return
+    }
+    $id = Get-ProtectCandidateId -Path $Path -Bytes $Bytes -LastWriteUtc $LastWriteUtc
+    if ($candidateById.ContainsKey($id)) { return }
+
+    $candidateById[$id] = [ordered]@{
+        id = $id
+        category = $category.category
+        path = $Path
+        bytes = $Bytes
+        fileCount = $FileCount
+        lastWriteUtc = $LastWriteUtc
+        risk = $category.risk
+        action = $category.action
+        reversible = [bool]$category.reversible
+        reason = $category.reason
+        fingerprint = [ordered]@{
+            kind = 'directory'
+            bytes = $Bytes
+            fileCount = $FileCount
+            latestWriteUtc = $LastWriteUtc
+        }
+    }
+}
+
 function Add-TopDirectoryTotal {
     param([Parameter(Mandatory = $true)]$Record)
 
@@ -79,17 +119,34 @@ function Add-TopDirectoryTotal {
 function Scan-Root {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
-        [switch]$IncludeProtected
+        [switch]$IncludeProtected,
+        [switch]$AggregateDirectory,
+        [string[]]$SkipRoots
     )
 
     if (-not (Test-Path -LiteralPath $Root)) { return }
     Write-Verbose ('Scanning {0}' -f $Root)
-    foreach ($record in (Get-ProtectFileRecords -Root $Root -IncludeProtected:$IncludeProtected)) {
+    $aggregateBytes = [long]0
+    $aggregateFileCount = 0
+    $latestWrite = $null
+    foreach ($record in (Get-ProtectFileRecords -Root $Root -IncludeProtected:$IncludeProtected -SkipRoots $SkipRoots)) {
         Add-TopDirectoryTotal -Record $record
-        Add-ManifestRecord -Record $record
+        if ($AggregateDirectory) {
+            $aggregateBytes += [long]$record.Bytes
+            $aggregateFileCount += 1
+            if ($null -eq $latestWrite -or $record.LastWriteTime -gt $latestWrite) { $latestWrite = $record.LastWriteTime }
+        } elseif ($record.PSObject.Properties['IsDirectory'] -and $record.IsDirectory) {
+            Add-ManifestDirectoryRecord -Path $record.Path -Bytes $record.Bytes -FileCount $record.FileCount -LastWriteUtc $record.LastWriteTimeUtc -LastWriteTime $record.LastWriteTime
+        } else {
+            Add-ManifestRecord -Record $record
+        }
         if (-not $Fast -and $record.Seen % 5000 -eq 0) {
             Write-Progress -Activity '扫描文件' -Status $record.Path -CurrentOperation ('已读取 {0} 个文件' -f $record.Seen)
         }
+    }
+    if ($AggregateDirectory -and $aggregateFileCount -gt 0) {
+        if ($null -eq $latestWrite) { $latestWrite = (Get-Item -LiteralPath $Root -Force).LastWriteTime }
+        Add-ManifestDirectoryRecord -Path ([System.IO.Path]::GetFullPath($Root).TrimEnd('\')) -Bytes $aggregateBytes -FileCount $aggregateFileCount -LastWriteUtc $latestWrite.ToUniversalTime().ToString('o') -LastWriteTime $latestWrite
     }
 }
 
@@ -100,7 +157,7 @@ if ($ScanRoots) {
 }
 
 foreach ($safeRoot in $safeRoots) {
-    Scan-Root -Root $safeRoot -IncludeProtected
+    Scan-Root -Root $safeRoot -IncludeProtected -AggregateDirectory
 }
 
 if ($SkipVolumes) {
@@ -114,6 +171,7 @@ if ($SkipVolumes) {
                 Bytes = [long]$file.Length
                 LastWriteTimeUtc = $file.LastWriteTimeUtc.ToString('o')
                 LastWriteTime = $file.LastWriteTime
+                ProtectedReason = Get-ProtectProtectedPathReason -Path $file.FullName
                 Seen = 0
             }
             Add-TopDirectoryTotal -Record $record
@@ -122,7 +180,7 @@ if ($SkipVolumes) {
     }
 } else {
     foreach ($volume in $fixedVolumes) {
-        Scan-Root -Root ($volume.DeviceID + '\')
+        Scan-Root -Root ($volume.DeviceID + '\') -SkipRoots $safeRoots -AggregateKnownDirectories
     }
 }
 

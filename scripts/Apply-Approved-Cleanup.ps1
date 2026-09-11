@@ -67,7 +67,7 @@ function Test-ProtectFixedFilePath {
 
     try {
         $root = [System.IO.Path]::GetPathRoot($Path)
-        if (-not $root -or $root.Length -ne 3 -or $root[1] -ne ':') { return $false }
+        if (-not $root -or $root.Length -ne 3 -or $root[1] -ne ':' -or [System.IO.Path]::GetFullPath($Path).TrimEnd('\').Length -le 2) { return $false }
         $drive = New-Object System.IO.DriveInfo($root)
         return $drive.DriveType -eq [System.IO.DriveType]::Fixed
     } catch { return $false }
@@ -117,11 +117,20 @@ foreach ($id in $approvedIds) {
     $fingerprint = Get-ProtectFingerprint -Path $path
     $sameFile = $false
     try {
-        $currentWrite = Convert-ProtectUtcTimestamp -Value $fingerprint.lastWriteUtc
-        $expectedWrite = Convert-ProtectUtcTimestamp -Value $candidate.fingerprint.lastWriteUtc
-        $sameFile = $fingerprint.kind -eq 'file' -and
-            [long]$fingerprint.bytes -eq [long]$candidate.fingerprint.bytes -and
-            $currentWrite.Ticks -eq $expectedWrite.Ticks
+        if ([string]$candidate.fingerprint.kind -eq 'directory') {
+            $currentWrite = Convert-ProtectUtcTimestamp -Value $fingerprint.latestWriteUtc
+            $expectedWrite = Convert-ProtectUtcTimestamp -Value $candidate.fingerprint.latestWriteUtc
+            $sameFile = $fingerprint.kind -eq 'directory' -and
+                [long]$fingerprint.bytes -eq [long]$candidate.fingerprint.bytes -and
+                [int]$fingerprint.fileCount -eq [int]$candidate.fingerprint.fileCount -and
+                $currentWrite.Ticks -eq $expectedWrite.Ticks
+        } else {
+            $currentWrite = Convert-ProtectUtcTimestamp -Value $fingerprint.lastWriteUtc
+            $expectedWrite = Convert-ProtectUtcTimestamp -Value $candidate.fingerprint.lastWriteUtc
+            $sameFile = $fingerprint.kind -eq 'file' -and
+                [long]$fingerprint.bytes -eq [long]$candidate.fingerprint.bytes -and
+                $currentWrite.Ticks -eq $expectedWrite.Ticks
+        }
     } catch {}
     if (-not $sameFile) {
         $blocked.Add([ordered]@{ id = $id; path = $path; reason = '文件在审批后发生变化，已停止处理。' }) | Out-Null
@@ -168,13 +177,25 @@ foreach ($candidate in $ready) {
             $skipped.Add([ordered]@{ id = [string]$candidate.id; path = [string]$candidate.path; reason = 'WhatIf 模式未执行。' }) | Out-Null
         } elseif ($PSCmdlet.ShouldProcess([string]$candidate.path, $actionLabel)) {
             if ($mode -eq 'recycle') {
-                [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile(
-                    [string]$candidate.path,
-                    [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
-                    [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
-                )
+                if ([string]$candidate.fingerprint.kind -eq 'directory') {
+                    [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(
+                        [string]$candidate.path,
+                        [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+                        [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
+                    )
+                } else {
+                    [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile(
+                        [string]$candidate.path,
+                        [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+                        [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
+                    )
+                }
             } else {
-                Remove-Item -LiteralPath ([string]$candidate.path) -Force -ErrorAction Stop
+                if ([string]$candidate.fingerprint.kind -eq 'directory') {
+                    [System.IO.Directory]::Delete([string]$candidate.path, $true)
+                } else {
+                    Remove-Item -LiteralPath ([string]$candidate.path) -Force -ErrorAction Stop
+                }
             }
             $applied.Add([ordered]@{ id = [string]$candidate.id; path = [string]$candidate.path; bytes = [long]$candidate.bytes }) | Out-Null
         } else {

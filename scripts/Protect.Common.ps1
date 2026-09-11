@@ -164,6 +164,18 @@ function Get-ProtectProtectedPathReason {
         $env:ProgramData
     ) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
 
+    $allowedSystemRoots = @(
+        (Join-Path $env:windir 'Temp'),
+        (Join-Path $env:windir 'SoftwareDistribution\Download'),
+        (Join-Path $env:windir 'DeliveryOptimization\Cache')
+    ) | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
+    foreach ($root in $allowedSystemRoots) {
+        if ($fullPath.Equals($root, [StringComparison]::OrdinalIgnoreCase) -or
+            $fullPath.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            return $null
+        }
+    }
+
     foreach ($root in $systemRoots) {
         if ($fullPath.Equals($root, [StringComparison]::OrdinalIgnoreCase) -or
             $fullPath.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) {
@@ -179,6 +191,10 @@ function Get-ProtectProtectedPathReason {
         'pagefile.sys',
         'swapfile.sys',
         'hiberfil.sys',
+        'DumpStack.log',
+        'DumpStack.log.tmp',
+        'Finish.log',
+        'MEMORY.DMP',
         '.ssh',
         '.aws',
         '.git',
@@ -269,7 +285,7 @@ function Get-ProtectCategoryForPath {
 
     $lower = $Path.ToLowerInvariant()
     $ageDays = ([DateTime]::UtcNow - $LastWriteTime.ToUniversalTime()).TotalDays
-    if ($lower -match '\\(temp|crashdumps|d3dscache|npm-cache|pnpm-cache|\.pnpm-store|go-build)(\\|$)' -or
+    if ($lower -match '\\(temp|crashdumps|d3dscache|npm-cache|pnpm-cache|pnpm|\.pnpm-store|go-build)(\\|$)' -or
         $lower -match '\\softwaredistribution\\download(\\|$)' -or
         $lower -match '\\(cache|caches)(\\|$)') {
         return [ordered]@{ category = 'cache'; risk = 'low'; action = 'permanent'; reversible = $false; reason = '缓存或可重新生成的数据，清理后应用可能需要重新生成。' }
@@ -286,22 +302,85 @@ function Get-ProtectCategoryForPath {
     return $null
 }
 
+function Get-ProtectDirectorySummary {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [string[]]$SkipRoots
+    )
+
+    $stack = New-Object System.Collections.Generic.Stack[string]
+    $stack.Push($Root)
+    $skipList = @($SkipRoots | Where-Object { $_ } | ForEach-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\') })
+    $bytes = [long]0
+    $fileCount = 0
+    $latestWrite = $null
+    while ($stack.Count -gt 0) {
+        $directory = $stack.Pop()
+        try {
+            $directoryInfo = New-Object System.IO.DirectoryInfo($directory)
+            if (($directoryInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+            $skipDirectory = $false
+            foreach ($skipRoot in $skipList) {
+                if ($directoryInfo.FullName.Equals($skipRoot, [StringComparison]::OrdinalIgnoreCase) -or
+                    $directoryInfo.FullName.StartsWith($skipRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                    $skipDirectory = $true
+                    break
+                }
+            }
+            if ($skipDirectory) { continue }
+            foreach ($file in $directoryInfo.EnumerateFiles('*', [IO.SearchOption]::TopDirectoryOnly)) {
+                if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+                $bytes += [long]$file.Length
+                $fileCount += 1
+                if ($null -eq $latestWrite -or $file.LastWriteTime -gt $latestWrite) { $latestWrite = $file.LastWriteTime }
+            }
+            foreach ($child in $directoryInfo.EnumerateDirectories('*', [IO.SearchOption]::TopDirectoryOnly)) {
+                if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+                if ($child.Name -in @('System Volume Information', 'Recovery', '.git', '.ssh', '.aws')) { continue }
+                $stack.Push($child.FullName)
+            }
+        } catch {}
+    }
+    if ($fileCount -eq 0) { return $null }
+    return [pscustomobject]@{
+        Path = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+        Bytes = $bytes
+        FileCount = $fileCount
+        LastWriteTimeUtc = $latestWrite.ToUniversalTime().ToString('o')
+        LastWriteTime = $latestWrite
+        ProtectedReason = Get-ProtectProtectedPathReason -Path $Root
+        IsDirectory = $true
+    }
+}
+
 function Get-ProtectFileRecords {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
-        [switch]$IncludeProtected
+        [switch]$IncludeProtected,
+        [string[]]$SkipRoots,
+        [switch]$AggregateKnownDirectories
     )
 
     $errors = New-Object System.Collections.Generic.List[object]
     $stack = New-Object System.Collections.Generic.Stack[string]
     $stack.Push($Root)
     $seen = 0
+    $skipList = @($SkipRoots | Where-Object { $_ } | ForEach-Object { [System.IO.Path]::GetFullPath($_).TrimEnd('\') })
 
     while ($stack.Count -gt 0) {
         $directory = $stack.Pop()
         try {
             $directoryInfo = New-Object System.IO.DirectoryInfo($directory)
             if (($directoryInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
+            $skipDirectory = $false
+            foreach ($skipRoot in $skipList) {
+                if ($directoryInfo.FullName.Equals($skipRoot, [StringComparison]::OrdinalIgnoreCase) -or
+                    $directoryInfo.FullName.StartsWith($skipRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                    $skipDirectory = $true
+                    break
+                }
+            }
+            if ($skipDirectory) { continue }
             foreach ($file in $directoryInfo.EnumerateFiles('*', [IO.SearchOption]::TopDirectoryOnly)) {
                 $seen += 1
                 if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
@@ -318,7 +397,25 @@ function Get-ProtectFileRecords {
             }
             foreach ($child in $directoryInfo.EnumerateDirectories('*', [IO.SearchOption]::TopDirectoryOnly)) {
                 if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { continue }
-                if ($child.Name -in @('System Volume Information', 'Recovery')) { continue }
+                if ($child.Name -in @('System Volume Information', 'Recovery', '.git', '.ssh', '.aws')) { continue }
+                $skipChild = $false
+                foreach ($skipRoot in $skipList) {
+                    if ($child.FullName.Equals($skipRoot, [StringComparison]::OrdinalIgnoreCase) -or
+                        $child.FullName.StartsWith($skipRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                        $skipChild = $true
+                        break
+                    }
+                }
+                if ($skipChild) { continue }
+                if ($AggregateKnownDirectories -and $child.Name -in @('node_modules', 'target', '__pycache__', 'build', 'dist', 'caches')) {
+                    $summary = Get-ProtectDirectorySummary -Root $child.FullName -SkipRoots $skipList
+                    if ($summary) {
+                        $seen += $summary.FileCount
+                        $summary | Add-Member -NotePropertyName Seen -NotePropertyValue $seen
+                        $summary
+                    }
+                    continue
+                }
                 $stack.Push($child.FullName)
             }
         } catch {

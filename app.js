@@ -211,10 +211,11 @@
       setHtml("#cleanup-list", visible.map((candidate) => {
         const checked = state.selected.has(candidate.id) ? " checked" : "";
         const risk = safeText(candidate.risk, "high");
+        const fileCount = Number(candidate.fileCount) > 0 ? " · " + Number(candidate.fileCount).toLocaleString("zh-CN") + " 个文件" : "";
         return '<div class="cleanup-item"><input type="checkbox" data-candidate-id="' + escapeHtml(candidate.id) +
           '"' + checked + ' aria-label="选择 ' + escapeHtml(candidate.path) + '">' +
           '<div><div class="cleanup-path">' + escapeHtml(candidate.path) + '</div><div class="cleanup-reason">' +
-          escapeHtml(candidate.reason) + "</div></div>" +
+          escapeHtml(safeText(candidate.reason) + fileCount) + "</div></div>" +
           '<div class="cleanup-meta"><strong>' + escapeHtml(formatBytes(candidate.bytes)) +
           '</strong><span>' + escapeHtml(categoryLabel(candidate.category)) + "</span></div>" +
           '<div class="cleanup-meta"><strong class="risk-' + escapeHtml(risk) + '">' + escapeHtml(riskLabel(risk)) +
