@@ -130,7 +130,8 @@ function Scan-Root {
     $aggregateBytes = [long]0
     $aggregateFileCount = 0
     $latestWrite = $null
-    foreach ($record in (Get-ProtectFileRecords -Root $Root -IncludeProtected:$IncludeProtected -SkipRoots $SkipRoots -AggregateKnownDirectories:$AggregateKnownDirectories)) {
+    Get-ProtectFileRecords -Root $Root -IncludeProtected:$IncludeProtected -SkipRoots $SkipRoots -AggregateKnownDirectories:$AggregateKnownDirectories | ForEach-Object {
+        $record = $_
         Add-TopDirectoryTotal -Record $record
         if ($AggregateDirectory) {
             $aggregateBytes += [long]$record.Bytes
