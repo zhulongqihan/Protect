@@ -67,6 +67,7 @@ function Add-ManifestDirectoryRecord {
         [Parameter(Mandatory = $true)][datetime]$LastWriteTime
     )
 
+    if (Get-ProtectProtectedPathReason -Path $Path) { return }
     $category = Get-ProtectCategoryForPath -Path $Path -Bytes $Bytes -LastWriteTime $LastWriteTime
     if ($null -eq $category) { return }
     $personalReason = Get-ProtectPersonalPathReason -Path $Path
