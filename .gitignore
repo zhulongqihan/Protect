@@ -1,0 +1,28 @@
+# Local runtime data: may contain full paths, application names and cleanup evidence.
+runtime/
+reports/
+approvals/
+data/latest-status.json
+data/latest-status.js
+data/pending-cleanup.json
+data/pending-cleanup.js
+data/report-index.js
+data/report-index.json
+runtime/**
+!runtime/.gitkeep
+.playwright-cli/
+output/
+*.local.json
+*.local.js
+*.log
+*.dmp
+.DS_Store
+Thumbs.db
+
+# Tooling and generated output.
+node_modules/
+target/
+dist/
+coverage/
+.venv/
+__pycache__/

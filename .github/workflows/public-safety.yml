@@ -1,0 +1,26 @@
+name: public-safety
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check public safety
+        shell: pwsh
+        run: ./scripts/Check-PublicSafe.ps1 -ProjectRoot $env:GITHUB_WORKSPACE -History
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check app.js
+          node --check sample/status.example.js
+          node --check sample/cleanup.example.js

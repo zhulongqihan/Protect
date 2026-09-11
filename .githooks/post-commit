@@ -1,0 +1,15 @@
+#!/bin/sh
+repo_root="$(git rev-parse --show-toplevel)"
+if command -v pwsh >/dev/null 2>&1; then
+  pwsh -NoProfile -File "$repo_root/scripts/Check-PublicSafe.ps1" -ProjectRoot "$repo_root" -History
+else
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$repo_root/scripts/Check-PublicSafe.ps1" -ProjectRoot "$repo_root" -History
+fi
+if [ $? -ne 0 ]; then
+  echo "Protect Computer: public safety check blocked automatic push."
+  exit 1
+fi
+branch="$(git symbolic-ref --quiet --short HEAD)"
+if [ -n "$branch" ]; then
+  git push origin "$branch"
+fi

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'">
+    <meta name="description" content="Protect Computer 本地电脑健康与清理审核报告">
+    <link rel="icon" href="data:,">
+    <title>电脑健康报告 · Protect Computer</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="topbar">
+      <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true">PC</span>
+        <div>
+          <p class="brand-name">Protect Computer</p>
+          <p class="brand-subtitle">本地维护台</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="data-mode" class="mode-badge">读取中</span>
+        <button id="refresh-button" class="button button-quiet" type="button">刷新报告</button>
+      </div>
+    </header>
+
+    <main id="main" class="page-shell">
+      <section class="intro-row" aria-labelledby="page-title">
+        <div>
+          <p class="section-kicker">电脑健康报告</p>
+          <h1 id="page-title">先看结论，再决定要不要动手。</h1>
+          <p id="report-meta" class="lede">正在读取本地报告。</p>
+        </div>
+        <div class="host-meta">
+          <span class="meta-label">设备</span>
+          <strong id="host-name">读取中</strong>
+          <span id="host-os">读取中</span>
+        </div>
+      </section>
+
+      <section id="verdict-panel" class="verdict-panel status-attention" aria-labelledby="verdict-title">
+        <div class="verdict-symbol" aria-hidden="true">!</div>
+        <div class="verdict-copy">
+          <div class="status-line">
+            <span class="status-label">当前判断</span>
+            <span id="verdict-status" class="status-chip status-chip-attention">需要关注</span>
+          </div>
+          <h2 id="verdict-title">正在读取健康结论</h2>
+          <p id="verdict-summary">请稍候。</p>
+          <ul id="verdict-reasons" class="reason-list"></ul>
+        </div>
+        <div class="verdict-action">
+          <span class="meta-label">最近检查</span>
+          <strong id="checked-at">读取中</strong>
+          <span id="run-id" class="mono">读取中</span>
+        </div>
+      </section>
+
+      <section class="section-block" aria-labelledby="disk-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">空间</p>
+            <h2 id="disk-title">磁盘现在还剩多少余量</h2>
+          </div>
+          <p class="section-note">健康线：至少 20% 可用</p>
+        </div>
+        <div id="disk-list" class="disk-list"></div>
+      </section>
+
+      <section class="section-block" aria-labelledby="priority-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">下一步</p>
+            <h2 id="priority-title">优先看这几件事</h2>
+          </div>
+        </div>
+        <div id="priority-list" class="priority-list"></div>
+      </section>
+
+      <section class="section-block review-section" aria-labelledby="cleanup-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">清理审核</p>
+            <h2 id="cleanup-title">所有候选项都在这里</h2>
+          </div>
+          <p id="cleanup-summary" class="section-note">尚未读取清单</p>
+        </div>
+        <p id="cleanup-policy-note" class="policy-note"></p>
+        <div class="review-toolbar">
+          <label class="field-label" for="category-filter">类别
+            <select id="category-filter">
+              <option value="all">全部</option>
+            </select>
+          </label>
+          <label class="field-label" for="risk-filter">风险
+            <select id="risk-filter">
+              <option value="all">全部</option>
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高</option>
+            </select>
+          </label>
+          <label class="field-label grow-field" for="path-filter">搜索路径
+            <input id="path-filter" type="search" placeholder="输入文件名或目录名">
+          </label>
+          <button id="select-visible" class="button button-secondary" type="button">勾选当前结果</button>
+          <button id="clear-selection" class="button button-quiet" type="button">清空选择</button>
+        </div>
+        <div class="review-summary">
+          <span id="selection-summary">已选择 0 项</span>
+          <span class="review-safety-note">页面只导出审批文件，不直接删除文件。</span>
+          <button id="export-approval" class="button button-primary" type="button">导出审批文件</button>
+        </div>
+        <div id="cleanup-list" class="cleanup-list" aria-live="polite"></div>
+        <div class="pagination">
+          <button id="previous-page" class="button button-quiet" type="button">上一页</button>
+          <span id="page-summary">第 1 页</span>
+          <button id="next-page" class="button button-quiet" type="button">下一页</button>
+        </div>
+      </section>
+
+      <section class="section-block" aria-labelledby="protection-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">保护</p>
+            <h2 id="protection-title">电脑的保护面</h2>
+          </div>
+          <p class="section-note">未知状态不会被当成正常</p>
+        </div>
+        <div id="protection-list" class="check-list"></div>
+      </section>
+
+      <section class="section-block" aria-labelledby="evidence-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">证据</p>
+            <h2 id="evidence-title">每个判断依据是什么</h2>
+          </div>
+        </div>
+        <div id="evidence-list" class="evidence-list"></div>
+      </section>
+
+      <section class="section-block history-section" aria-labelledby="history-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">趋势</p>
+            <h2 id="history-title">最近的空间变化</h2>
+          </div>
+          <p class="section-note">显示最近 90 次本地报告</p>
+        </div>
+        <div id="history-chart" class="history-chart" role="img" aria-label="最近报告的磁盘可用率趋势"></div>
+        <div id="history-table-wrap" class="visually-hidden"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>Protect Computer 只在本机展示报告。真实报告、完整路径和审批记录不会进入公开仓库。</p>
+      <p id="toast" class="toast" role="status" aria-live="polite"></p>
+    </footer>
+
+    <script src="./sample/status.example.js"></script>
+    <script src="./sample/cleanup.example.js"></script>
+    <script src="./runtime/data/latest-status.js"></script>
+    <script src="./runtime/data/pending-cleanup.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
