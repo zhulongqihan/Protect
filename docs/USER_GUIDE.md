@@ -71,6 +71,12 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\Apply-Approved-Cleanup.cmd -ApprovalFile "C:\path\to\approval.json" -AllowHighRisk
 ```
 
+如果只想先验证审批文件和预检流程，可以加 `-WhatIf`；它会生成结果记录，但不会处理文件：
+
+```powershell
+.\Apply-Approved-Cleanup.cmd -ApprovalFile "C:\path\to\approval.json" -WhatIf
+```
+
 永久删除需要同时明确指定：
 
 ```powershell

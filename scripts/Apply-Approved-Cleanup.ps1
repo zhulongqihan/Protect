@@ -93,7 +93,10 @@ foreach ($id in $approvedIds) {
     $candidate = $candidateMap[$id]
     $path = [string]$candidate.path
     $blockReason = Get-ProtectProtectedPathReason -Path $path
-    if ($blockReason) {
+    $safeSystemCleanup = $blockReason -eq 'system-path' -and
+        (Test-ProtectSafeCleanupPath -Path $path) -and
+        [string]$candidate.category -in @('cache', 'temp', 'log')
+    if ($blockReason -and -not $safeSystemCleanup) {
         $blocked.Add([ordered]@{ id = $id; path = $path; reason = '系统保护路径不允许清理。' }) | Out-Null
         continue
     }

@@ -93,18 +93,7 @@ function Scan-Root {
     }
 }
 
-$safeRoots = @(
-    $env:TEMP,
-    (Join-Path $env:windir 'Temp'),
-    (Join-Path $env:windir 'SoftwareDistribution\Download'),
-    (Join-Path $env:windir 'DeliveryOptimization\Cache'),
-    (Join-Path $env:LOCALAPPDATA 'Temp'),
-    (Join-Path $env:LOCALAPPDATA 'CrashDumps'),
-    (Join-Path $env:LOCALAPPDATA 'npm-cache'),
-    (Join-Path $env:LOCALAPPDATA 'pnpm-cache'),
-    (Join-Path $env:LOCALAPPDATA 'pnpm'),
-    (Join-Path $env:LOCALAPPDATA 'D3DSCache')
-) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+$safeRoots = Get-ProtectSafeCleanupRoots
 
 if ($ScanRoots) {
     $safeRoots = @($ScanRoots | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique)

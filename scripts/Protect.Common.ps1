@@ -24,6 +24,14 @@ function Initialize-ProtectRuntime {
     foreach ($directory in $directories) {
         New-Item -ItemType Directory -Force -Path $directory | Out-Null
     }
+    $statusScript = Join-Path $runtimeRoot 'data\latest-status.js'
+    if (-not (Test-Path -LiteralPath $statusScript -PathType Leaf)) {
+        Write-ProtectUtf8Text -Path $statusScript -Text 'window.PROTECT_RUNTIME_STATUS = null;'
+    }
+    $cleanupScript = Join-Path $runtimeRoot 'data\pending-cleanup.js'
+    if (-not (Test-Path -LiteralPath $cleanupScript -PathType Leaf)) {
+        Write-ProtectUtf8Text -Path $cleanupScript -Text 'window.PROTECT_RUNTIME_CLEANUP = null;'
+    }
     return $runtimeRoot
 }
 
@@ -220,6 +228,38 @@ function Get-ProtectPersonalPathReason {
     return $null
 }
 
+function Get-ProtectSafeCleanupRoots {
+    $roots = @(
+        $env:TEMP,
+        (Join-Path $env:windir 'Temp'),
+        (Join-Path $env:windir 'SoftwareDistribution\Download'),
+        (Join-Path $env:windir 'DeliveryOptimization\Cache'),
+        (Join-Path $env:LOCALAPPDATA 'Temp'),
+        (Join-Path $env:LOCALAPPDATA 'CrashDumps'),
+        (Join-Path $env:LOCALAPPDATA 'npm-cache'),
+        (Join-Path $env:LOCALAPPDATA 'pnpm-cache'),
+        (Join-Path $env:LOCALAPPDATA 'pnpm'),
+        (Join-Path $env:LOCALAPPDATA 'D3DSCache')
+    )
+    return @($roots | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique)
+}
+
+function Test-ProtectSafeCleanupPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    try {
+        $fullPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+        foreach ($root in (Get-ProtectSafeCleanupRoots)) {
+            $safeRoot = [System.IO.Path]::GetFullPath($root).TrimEnd('\')
+            if ($fullPath.Equals($safeRoot, [StringComparison]::OrdinalIgnoreCase) -or
+                $fullPath.StartsWith($safeRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                return $true
+            }
+        }
+    } catch {}
+    return $false
+}
+
 function Get-ProtectCategoryForPath {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -230,6 +270,7 @@ function Get-ProtectCategoryForPath {
     $lower = $Path.ToLowerInvariant()
     $ageDays = ([DateTime]::UtcNow - $LastWriteTime.ToUniversalTime()).TotalDays
     if ($lower -match '\\(temp|crashdumps|d3dscache|npm-cache|pnpm-cache|\.pnpm-store|go-build)(\\|$)' -or
+        $lower -match '\\softwaredistribution\\download(\\|$)' -or
         $lower -match '\\(cache|caches)(\\|$)') {
         return [ordered]@{ category = 'cache'; risk = 'low'; action = 'permanent'; reversible = $false; reason = '缓存或可重新生成的数据，清理后应用可能需要重新生成。' }
     }
