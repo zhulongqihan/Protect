@@ -287,7 +287,7 @@ function Get-ProtectCategoryForPath {
     $ageDays = ([DateTime]::UtcNow - $LastWriteTime.ToUniversalTime()).TotalDays
     if ($lower -match '\\(temp|crashdumps|d3dscache|npm-cache|pnpm-cache|pnpm|\.pnpm-store|go-build)(\\|$)' -or
         $lower -match '\\softwaredistribution\\download(\\|$)' -or
-        $lower -match '\\(cache|caches)(\\|$)') {
+        $lower -match '\\(cache|caches|code cache|gpucache|cachestorage|cache_data|dawncache|shadercache|grshadercache)(\\|$)') {
         return [ordered]@{ category = 'cache'; risk = 'low'; action = 'permanent'; reversible = $false; reason = '缓存或可重新生成的数据，清理后应用可能需要重新生成。' }
     }
     if ($lower -match '\.(log|tmp|dmp|etl)$' -and $ageDays -ge 7) {
@@ -407,7 +407,11 @@ function Get-ProtectFileRecords {
                     }
                 }
                 if ($skipChild) { continue }
-                if ($AggregateKnownDirectories -and $child.Name -in @('node_modules', 'target', '__pycache__', 'build', 'dist', 'caches')) {
+                if ($AggregateKnownDirectories -and $child.Name -in @(
+                        'node_modules', 'target', '__pycache__', 'build', 'dist',
+                        'caches', 'cache', 'Code Cache', 'GPUCache', 'CacheStorage',
+                        'Cache_Data', 'DawnCache', 'ShaderCache', 'GrShaderCache'
+                    )) {
                     $summary = Get-ProtectDirectorySummary -Root $child.FullName -SkipRoots $skipList
                     if ($summary) {
                         $seen += $summary.FileCount

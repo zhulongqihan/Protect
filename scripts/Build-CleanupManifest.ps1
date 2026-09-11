@@ -121,6 +121,7 @@ function Scan-Root {
         [Parameter(Mandatory = $true)][string]$Root,
         [switch]$IncludeProtected,
         [switch]$AggregateDirectory,
+        [switch]$AggregateKnownDirectories,
         [string[]]$SkipRoots
     )
 
@@ -129,7 +130,7 @@ function Scan-Root {
     $aggregateBytes = [long]0
     $aggregateFileCount = 0
     $latestWrite = $null
-    foreach ($record in (Get-ProtectFileRecords -Root $Root -IncludeProtected:$IncludeProtected -SkipRoots $SkipRoots)) {
+    foreach ($record in (Get-ProtectFileRecords -Root $Root -IncludeProtected:$IncludeProtected -SkipRoots $SkipRoots -AggregateKnownDirectories:$AggregateKnownDirectories)) {
         Add-TopDirectoryTotal -Record $record
         if ($AggregateDirectory) {
             $aggregateBytes += [long]$record.Bytes
@@ -141,7 +142,7 @@ function Scan-Root {
             Add-ManifestRecord -Record $record
         }
         if (-not $Fast -and $record.Seen % 5000 -eq 0) {
-            Write-Progress -Activity '扫描文件' -Status $record.Path -CurrentOperation ('已读取 {0} 个文件' -f $record.Seen)
+            Write-Progress -Activity '扫描文件' -Status '本地文件系统' -CurrentOperation ('已读取 {0} 个文件' -f $record.Seen)
         }
     }
     if ($AggregateDirectory -and $aggregateFileCount -gt 0) {
