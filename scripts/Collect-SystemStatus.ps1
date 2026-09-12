@@ -160,11 +160,18 @@ function Get-SystemReport {
             (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name PendingFileRenameOperations -ErrorAction SilentlyContinue)
     } catch {}
     $crashRoot = Join-Path $env:LOCALAPPDATA 'CrashDumps'
-    $crashFiles = if (Test-Path -LiteralPath $crashRoot) { @(Get-ChildItem -LiteralPath $crashRoot -File -Force -ErrorAction SilentlyContinue) } else { @() }
+    $crashFiles = @()
+    if (Test-Path -LiteralPath $crashRoot) {
+        $crashFiles = @(Get-ChildItem -LiteralPath $crashRoot -File -Force -ErrorAction SilentlyContinue)
+    }
     $criticalEvents = @()
     try {
         $criticalEvents = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Level = 1; StartTime = (Get-Date).AddDays(-7) } -MaxEvents 100 -ErrorAction Stop)
     } catch {}
+    $crashDumpBytes = [long]0
+    if ($crashFiles.Count -gt 0) {
+        $crashDumpBytes = [long](($crashFiles | Measure-Object -Property Length -Sum).Sum)
+    }
     return [ordered]@{
         isAdministrator = $isAdmin
         os = if ($os) { $os.Caption } else { '系统信息未核验' }
@@ -173,7 +180,7 @@ function Get-SystemReport {
         uptimeHours = $uptimeHours
         pendingReboot = [bool]$pendingReboot
         crashDumpCount = $crashFiles.Count
-        crashDumpBytes = [long](($crashFiles | Measure-Object -Property Length -Sum).Sum)
+        crashDumpBytes = $crashDumpBytes
         criticalSystemEventsLast7Days = $criticalEvents.Count
     }
 }

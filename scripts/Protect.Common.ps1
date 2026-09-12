@@ -410,7 +410,8 @@ function Get-ProtectFileRecords {
                 if ($AggregateKnownDirectories -and $child.Name -in @(
                         'node_modules', 'target', '__pycache__', 'build', 'dist',
                         'caches', 'cache', 'Code Cache', 'GPUCache', 'CacheStorage',
-                        'Cache_Data', 'DawnCache', 'ShaderCache', 'GrShaderCache'
+                        'Cache_Data', 'DawnCache', 'ShaderCache', 'GrShaderCache',
+                        '.pnpm-store', 'pnpm-store'
                     )) {
                     $summary = Get-ProtectDirectorySummary -Root $child.FullName -SkipRoots $skipList
                     if ($summary) {
