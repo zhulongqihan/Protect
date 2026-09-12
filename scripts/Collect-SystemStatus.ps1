@@ -185,6 +185,87 @@ function Get-SystemReport {
     }
 }
 
+function Get-CleanupActionReport {
+    $approvalRoot = Join-Path $runtimeRoot 'approvals'
+    if (-not (Test-Path -LiteralPath $approvalRoot -PathType Container)) { return $null }
+    $applyFiles = @(Get-ChildItem -LiteralPath $approvalRoot -Filter 'apply-*.json' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending)
+    if ($applyFiles.Count -eq 0) { return $null }
+
+    try {
+        $raw = Get-Content -LiteralPath $applyFiles[0].FullName -Raw -Encoding UTF8 | ConvertFrom-Json
+        $applied = @($raw.applied)
+        $blocked = @($raw.blocked)
+        $skipped = @($raw.skipped)
+        $errors = @($raw.errors)
+        $appliedBytes = [long]0
+        foreach ($item in $applied) { $appliedBytes += [long]$item.bytes }
+
+        $reasonCounts = @{}
+        foreach ($entry in (@($errors) + @($blocked))) {
+            $reasonText = if ($entry -is [string]) {
+                [string]$entry
+            } elseif ($entry.PSObject.Properties['reason']) {
+                [string]$entry.reason
+            } else {
+                '其他执行错误'
+            }
+            $bucket = if ($reasonText -match '正在使用|进程无法访问|in use') {
+                '文件正在使用中'
+            } elseif ($reasonText -match 'unauthorized|权限|拒绝') {
+                '权限不足'
+            } elseif ($reasonText -match '找不到|不存在|Could not find') {
+                '目标已不存在'
+            } elseif ($reasonText -match '路径无效|invalid path') {
+                '路径无效'
+            } elseif ($reasonText -match '文件存在') {
+                '回收站目标冲突'
+            } elseif ($reasonText -match '发生变化|changed') {
+                '审批后发生变化'
+            } else {
+                '其他执行错误'
+            }
+            if ($reasonCounts.ContainsKey($bucket)) { $reasonCounts[$bucket] += 1 } else { $reasonCounts[$bucket] = 1 }
+        }
+        $reasonRows = @($reasonCounts.GetEnumerator() | Sort-Object Value -Descending | ForEach-Object {
+            [ordered]@{ reason = [string]$_.Key; count = [int]$_.Value }
+        })
+        $approvedCount = if ($raw.PSObject.Properties['approvedCount']) {
+            [int]$raw.approvedCount
+        } else {
+            $applied.Count + $blocked.Count + $skipped.Count + $errors.Count
+        }
+        return [ordered]@{
+            runId = [string]$raw.runId
+            approvalRunId = [string]$raw.approvalRunId
+            generatedAt = $applyFiles[0].LastWriteTimeUtc.ToString('o')
+            mode = [string]$raw.mode
+            action = if ([string]$raw.mode -eq 'permanent') { '永久删除' } else { '移入回收站' }
+            status = if ($errors.Count -gt 0 -or $blocked.Count -gt 0) { 'attention' } else { 'pass' }
+            approvedCount = $approvedCount
+            appliedCount = $applied.Count
+            appliedBytes = $appliedBytes
+            blockedCount = $blocked.Count
+            skippedCount = $skipped.Count
+            errorCount = $errors.Count
+            errorReasons = $reasonRows
+        }
+    } catch {
+        return [ordered]@{
+            runId = [System.IO.Path]::GetFileNameWithoutExtension($applyFiles[0].Name)
+            generatedAt = $applyFiles[0].LastWriteTimeUtc.ToString('o')
+            action = '清理结果读取失败'
+            status = 'unknown'
+            approvedCount = 0
+            appliedCount = 0
+            appliedBytes = 0
+            blockedCount = 0
+            skippedCount = 0
+            errorCount = 1
+            errorReasons = @([ordered]@{ reason = '结果文件无法读取'; count = 1 })
+        }
+    }
+}
+
 $disks = @(Get-DiskReports)
 $firewall = Get-FirewallReport
 $antivirus = Get-AntivirusReport
@@ -192,6 +273,7 @@ $updates = Get-UpdateReport
 $backup = Get-BackupReport
 $storageHealth = Get-StorageHealthReport
 $system = Get-SystemReport
+$lastCleanupAction = Get-CleanupActionReport
 
 $manifestPath = Join-Path $runtimeRoot 'data\pending-cleanup.json'
 $manifest = $null
@@ -271,6 +353,7 @@ $report = [ordered]@{
         approvedCount = 0
         approvedBytes = 0
         status = if ([int]$manifest.candidateCount -gt 0) { 'awaiting-review' } else { 'empty' }
+        lastAction = $lastCleanupAction
         categories = @($manifest.candidates | Group-Object category | ForEach-Object {
             [ordered]@{
                 name = $_.Name

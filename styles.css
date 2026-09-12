@@ -374,6 +374,36 @@ h2 {
   padding: 0.2rem 0 0.2rem 0.8rem;
 }
 
+.cleanup-action {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 1.15rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--success);
+  background: var(--surface);
+}
+
+.cleanup-action.status-attention {
+  border-left-color: var(--attention);
+}
+
+.cleanup-action.status-unknown {
+  border-left-color: var(--muted);
+}
+
+.cleanup-action-title {
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.cleanup-action-detail {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .disk-list,
 .priority-list,
 .check-list,

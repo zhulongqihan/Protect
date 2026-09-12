@@ -190,7 +190,37 @@
     setText("#selection-summary", "已选择 " + selected.length + " 项 · 预计 " + formatBytes(bytes));
   }
 
+  function renderCleanupAction() {
+    const element = $("#cleanup-action");
+    if (!element) return;
+    const action = status.cleanup && status.cleanup.lastAction;
+    if (!action || !action.runId) {
+      element.hidden = true;
+      element.innerHTML = "";
+      return;
+    }
+    const cls = statusClass(action.status);
+    const applied = Number(action.appliedCount) || 0;
+    const errors = Number(action.errorCount) || 0;
+    const blocked = Number(action.blockedCount) || 0;
+    const skipped = Number(action.skippedCount) || 0;
+    const details = [
+      safeText(action.action, "清理操作") + " " + applied.toLocaleString("zh-CN") + " 项 · 约 " + formatBytes(action.appliedBytes),
+      errors + blocked + skipped > 0 ? "未完成 " + (errors + blocked + skipped).toLocaleString("zh-CN") + " 项" : "本批次没有未完成项"
+    ];
+    const reasons = Array.isArray(action.errorReasons) ? action.errorReasons.map((item) =>
+      safeText(item.reason) + " " + (Number(item.count) || 0).toLocaleString("zh-CN") + " 项"
+    ) : [];
+    element.hidden = false;
+    element.className = "cleanup-action status-" + cls;
+    element.innerHTML = '<div class="cleanup-action-title">最近一次清理结果 · ' + escapeHtml(statusLabel(cls)) +
+      '</div><div class="cleanup-action-detail">' + escapeHtml(details.join("；")) +
+      " · " + escapeHtml(formatDate(action.generatedAt)) + "</div>" +
+      (reasons.length ? '<div class="cleanup-action-detail">原因：' + escapeHtml(reasons.join("、")) + "</div>" : "");
+  }
+
   function renderCleanup() {
+    renderCleanupAction();
     state.filtered = getFilteredCandidates();
     const pageCount = Math.max(1, Math.ceil(state.filtered.length / state.pageSize));
     state.page = Math.min(state.page, pageCount);
