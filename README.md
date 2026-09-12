@@ -46,7 +46,7 @@ Set-Location .\Protect
 
 安全缓存和临时目录会以“目录候选”显示，并附带目录内文件数；普通大文件和构建产物仍按文件逐项显示。
 
-清理完成后脚本会重新生成清单和状态报告。需要更完整的刷新时执行：
+清理完成后脚本默认按本次实际成功项增量更新清单和状态报告，保留未处理候选；需要重新遍历全部固定磁盘时执行：
 
 ```powershell
 .\Apply-Approved-Cleanup.cmd -ApprovalFile "C:\path\to\approval.json" -DeepRefresh

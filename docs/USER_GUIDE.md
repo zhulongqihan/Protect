@@ -59,7 +59,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\Apply-Approved-Cleanup.cmd -ApprovalFile "C:\Users\<user>\Downloads\approval-<run-id>.json"
 ```
 
-默认送入回收站，适合第一次使用。脚本执行前会检查：
+默认送入回收站，适合第一次使用。清理后会按实际成功项增量更新清单和状态报告；需要重新遍历全部固定磁盘时再使用 `-DeepRefresh`。脚本执行前会检查：
 
 1. 审批批次是否仍是当前清单；
 2. 每个 ID 是否确实存在于当前清单；

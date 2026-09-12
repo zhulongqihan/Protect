@@ -6,7 +6,8 @@ param(
     [string]$ApprovalFile,
     [switch]$Permanent,
     [switch]$AllowHighRisk,
-    [switch]$DeepRefresh
+    [switch]$DeepRefresh,
+    [switch]$IncrementalRefresh
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,6 +18,10 @@ $scriptRoot = Join-Path $ProjectRoot 'scripts'
 . (Join-Path $scriptRoot 'Protect.Common.ps1')
 $runtimeRoot = Initialize-ProtectRuntime -ProjectRoot $ProjectRoot
 $manifestPath = Join-Path $runtimeRoot 'data\pending-cleanup.json'
+
+if ($DeepRefresh -and $IncrementalRefresh) {
+    throw 'DeepRefresh 和 IncrementalRefresh 不能同时使用。'
+}
 
 if (-not $ApprovalFile) {
     $ApprovalFile = Get-ChildItem -LiteralPath (Join-Path $runtimeRoot 'approvals') -Filter 'approval-*.json' -File -ErrorAction SilentlyContinue |
@@ -221,11 +226,63 @@ Write-Output ('APPLY_ERRORS={0}' -f $errors.Count)
 Write-Output ('APPLY_SKIPPED={0}' -f $skipped.Count)
 Write-Output ('APPLY_RESULT={0}' -f $resultPath)
 
-$buildScript = Join-Path $scriptRoot 'Build-CleanupManifest.ps1'
 $collectScript = Join-Path $scriptRoot 'Collect-SystemStatus.ps1'
-$refreshParams = @{ ProjectRoot = $ProjectRoot; RunId = $resultRunId }
-if (-not $DeepRefresh) { $refreshParams['Fast'] = $true }
-& $buildScript @refreshParams | Write-Output
-if (-not $?) { throw '清理后的候选清单刷新失败。' }
+$useIncrementalRefresh = $IncrementalRefresh -or -not $DeepRefresh
+if ($useIncrementalRefresh) {
+    $appliedIds = @($applied | ForEach-Object { [string]$_.id })
+    $remainingCandidates = @($manifest.candidates | Where-Object { $appliedIds -notcontains [string]$_.id })
+    $remainingBytes = [long]0
+    foreach ($candidate in $remainingCandidates) { $remainingBytes += [long]$candidate.bytes }
+
+    $remainingTopDirectories = @()
+    if ($null -ne $manifest.topDirectories) {
+        foreach ($topDirectory in @($manifest.topDirectories)) {
+            if ($null -eq $topDirectory) { continue }
+            $topPath = [string]$topDirectory.path
+            $topBytes = [long]$topDirectory.bytes
+            $topFileCount = [int]$topDirectory.fileCount
+            foreach ($item in $applied) {
+                $itemPath = [string]$item.path
+                if ($itemPath.Equals($topPath, [StringComparison]::OrdinalIgnoreCase) -or
+                    $itemPath.StartsWith($topPath + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                    $topBytes -= [long]$item.bytes
+                    $topFileCount -= 1
+                }
+            }
+            $remainingTopDirectories += [ordered]@{
+                path = $topPath
+                bytes = [math]::Max([long]0, $topBytes)
+                fileCount = [math]::Max(0, $topFileCount)
+            }
+        }
+    }
+    $remainingTopDirectories = @($remainingTopDirectories | Sort-Object -Property bytes -Descending | Select-Object -First 100)
+    $incrementalManifest = [ordered]@{
+        schemaVersion = $manifest.schemaVersion
+        runId = $resultRunId
+        generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+        scanMode = 'incremental'
+        minimumLargeFileBytes = $manifest.minimumLargeFileBytes
+        candidateCount = $remainingCandidates.Count
+        candidateBytes = $remainingBytes
+        excludedByPolicy = $manifest.excludedByPolicy
+        candidates = $remainingCandidates
+        topDirectories = $remainingTopDirectories
+        scanErrors = @($manifest.scanErrors)
+    }
+    Write-ProtectJson -Object $incrementalManifest -Path (Join-Path $runtimeRoot ('reports\{0}\cleanup-manifest.json' -f $resultRunId))
+    Write-ProtectJson -Object $incrementalManifest -Path (Join-Path $runtimeRoot 'data\pending-cleanup.json')
+    Write-ProtectBrowserScript -Object $incrementalManifest -Path (Join-Path $runtimeRoot 'data\pending-cleanup.js') -VariableName 'PROTECT_RUNTIME_CLEANUP'
+    Write-Output ('MANIFEST_RUN_ID={0}' -f $resultRunId)
+    Write-Output ('CANDIDATE_COUNT={0}' -f $incrementalManifest.candidateCount)
+    Write-Output ('CANDIDATE_BYTES={0}' -f $incrementalManifest.candidateBytes)
+    Write-Output ('SCAN_MODE={0}' -f $incrementalManifest.scanMode)
+} else {
+    $buildScript = Join-Path $scriptRoot 'Build-CleanupManifest.ps1'
+    $refreshParams = @{ ProjectRoot = $ProjectRoot; RunId = $resultRunId }
+    if (-not $DeepRefresh) { $refreshParams['Fast'] = $true }
+    & $buildScript @refreshParams | Write-Output
+    if (-not $?) { throw '清理后的候选清单刷新失败。' }
+}
 & $collectScript -ProjectRoot $ProjectRoot -RunId $resultRunId | Write-Output
 if (-not $?) { throw '清理后的状态报告刷新失败。' }
